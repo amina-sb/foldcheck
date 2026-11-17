@@ -76,8 +76,12 @@ numpy 2.5 / scikit-learn 1.9.
 ## Install
 
 ```bash
-pip install -e ".[dev]"
+pip install git+https://github.com/amina-sb/foldcheck
+# development
+pip install -e ".[dev]" && pytest -q && python scripts/evidence.py
 ```
+
+Documentation: <https://amina-sb.github.io/foldcheck/>
 
 ## Splitters
 

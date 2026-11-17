@@ -18,5 +18,5 @@
 ## Phase 4 — Interval quality and distribution
 - [x] BCa bootstrap intervals, with a coverage test on a skewed statistic
 - [x] Repeated cross-validation with a corrected resampled t-interval (Nadeau & Bengio)
-- [ ] Documentation site built from the repository
-- [ ] Release workflow using PyPI trusted publishing
+- [x] Documentation site built from the repository
+- [x] Release workflow using PyPI trusted publishing
