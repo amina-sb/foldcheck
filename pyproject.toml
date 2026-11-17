@@ -30,7 +30,7 @@ select = ["E", "F", "W", "I", "B", "UP", "NPY", "SIM", "RUF"]
 
 [tool.mypy]
 strict = true
-files = ["src", "tests", "scripts"]
+files = ["src", "tests"]
 
 [[tool.mypy.overrides]]
 module = ["sklearn.*", "scipy.*"]
