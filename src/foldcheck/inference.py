@@ -9,9 +9,10 @@ from typing import Any, Literal
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
+from scipy.stats import t as t_dist
 from sklearn.base import BaseEstimator, clone
 from sklearn.metrics import get_scorer
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV, KFold, StratifiedKFold
 
 Metric = Callable[[NDArray[Any], NDArray[Any]], float]
 
@@ -107,6 +108,82 @@ def bootstrap_ci(
         q_lo, q_hi = _bca_quantiles(stats, theta_hat, jack, alpha)
     low, high = np.quantile(stats, [q_lo, q_hi])
     return Interval(theta_hat, float(low), float(high), level)
+
+
+def corrected_t_interval(
+    scores: ArrayLike, n_train: int, n_test: int, *, level: float = 0.95
+) -> Interval:
+    """Interval for the mean of repeated cross-validation scores.
+
+    Scores from different folds are positively correlated, because their
+    training sets overlap, so the naive standard error ``s / sqrt(J)``
+    understates the uncertainty. Nadeau & Bengio (2003), "Inference for the
+    generalization error", *Machine Learning* 52, replace the variance factor
+    ``1/J`` with ``1/J + n_test/n_train``. For 10 repeats of 5-fold CV
+    (J = 50, n_test/n_train = 1/4) that widens the interval by a factor of
+    sqrt((1/50 + 1/4) / (1/50)) = 3.67.
+
+    ``scores`` may be any shape; all entries are treated as the J resamples.
+    """
+    s = np.asarray(scores, dtype=float).ravel()
+    if s.size < 2:
+        raise ValueError("need at least two scores")
+    if n_train < 1 or n_test < 1:
+        raise ValueError("n_train and n_test must be positive")
+    if not 0.0 < level < 1.0:
+        raise ValueError("level must be in (0, 1)")
+    J = s.size
+    mean = float(s.mean())
+    var = float(np.var(s, ddof=1))
+    se = float(np.sqrt((1.0 / J + n_test / n_train) * var))
+    tcrit = float(t_dist.ppf(0.5 + level / 2.0, df=J - 1))
+    return Interval(mean, mean - tcrit * se, mean + tcrit * se, level)
+
+
+@dataclass(frozen=True)
+class RepeatedCVResult:
+    scores: NDArray[np.float64]  # shape (n_repeats, n_splits)
+    n_train: int
+    n_test: int
+
+    def interval(self, level: float = 0.95) -> Interval:
+        return corrected_t_interval(self.scores, self.n_train, self.n_test, level=level)
+
+
+def repeated_cv(
+    estimator: BaseEstimator,
+    X: ArrayLike,
+    y: ArrayLike,
+    *,
+    n_splits: int = 5,
+    n_repeats: int = 10,
+    scoring: str = "accuracy",
+    stratify: bool = False,
+    random_state: int = 0,
+) -> RepeatedCVResult:
+    """Repeated shuffled k-fold, returning the score matrix and fold sizes.
+
+    Repeat ``r`` uses seed ``random_state + r``. ``n_train`` and ``n_test`` are
+    the mean fold sizes, which is what the Nadeau-Bengio correction needs.
+    """
+    Xa = np.asarray(X)
+    ya = np.asarray(y)
+    scorer = get_scorer(scoring)
+    scores = np.empty((n_repeats, n_splits))
+    tr_sizes: list[int] = []
+    te_sizes: list[int] = []
+    for r in range(n_repeats):
+        cv = (StratifiedKFold if stratify else KFold)(
+            n_splits, shuffle=True, random_state=random_state + r
+        )
+        for k, (tr, te) in enumerate(cv.split(Xa, ya)):
+            model = clone(estimator).fit(Xa[tr], ya[tr])
+            scores[r, k] = scorer(model, Xa[te], ya[te])
+            tr_sizes.append(tr.size)
+            te_sizes.append(te.size)
+    return RepeatedCVResult(
+        scores, round(float(np.mean(tr_sizes))), round(float(np.mean(te_sizes)))
+    )
 
 
 @dataclass(frozen=True)

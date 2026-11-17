@@ -166,3 +166,53 @@ def test_unknown_bootstrap_method_rejected() -> None:
     with pytest.raises(ValueError, match="unknown method"):
         bootstrap_ci([0, 1], [0, 1], _accuracy, method="basic")  # type: ignore[arg-type]
 
+
+def test_corrected_t_interval_matches_hand_calculation() -> None:
+    from foldcheck.inference import corrected_t_interval
+
+    scores = np.array([0.80, 0.82, 0.78, 0.85, 0.75, 0.81, 0.79, 0.83, 0.77, 0.80])
+    ci = corrected_t_interval(scores, n_train=80, n_test=20)
+    mean = 0.80
+    var = sum((s - mean) ** 2 for s in scores) / 9
+    se = ((1 / 10 + 20 / 80) * var) ** 0.5
+    tcrit = stats.t.ppf(0.975, 9)
+    assert ci.estimate == pytest.approx(mean)
+    assert ci.low == pytest.approx(mean - tcrit * se)
+    assert ci.high == pytest.approx(mean + tcrit * se)
+
+
+def test_corrected_interval_widens_by_stated_factor() -> None:
+    from foldcheck.inference import corrected_t_interval
+
+    rng = np.random.default_rng(0)
+    scores = rng.normal(0.8, 0.02, size=(10, 5))
+    corrected = corrected_t_interval(scores, n_train=400, n_test=100)
+    naive = corrected_t_interval(scores, n_train=10**12, n_test=1)
+    ratio = (corrected.high - corrected.low) / (naive.high - naive.low)
+    assert ratio == pytest.approx(((1 / 50 + 1 / 4) / (1 / 50)) ** 0.5, rel=1e-6)
+    assert ratio == pytest.approx(3.674, abs=1e-3)
+
+
+def test_corrected_interval_validates_input() -> None:
+    from foldcheck.inference import corrected_t_interval
+
+    with pytest.raises(ValueError, match="two scores"):
+        corrected_t_interval([0.5], 10, 2)
+    with pytest.raises(ValueError, match="positive"):
+        corrected_t_interval([0.5, 0.6], 0, 2)
+
+
+def test_repeated_cv_shapes_sizes_and_interval() -> None:
+    from foldcheck.inference import repeated_cv
+
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(200, 4))
+    y = (X[:, 0] + 0.5 * rng.normal(size=200) > 0).astype(int)
+    res = repeated_cv(LogisticRegression(), X, y, n_splits=5, n_repeats=4, stratify=True)
+    assert res.scores.shape == (4, 5)
+    assert (res.n_train, res.n_test) == (160, 40)
+    ci = res.interval()
+    assert ci.low < ci.estimate < ci.high
+    assert 0.75 < ci.estimate < 0.95
+    # Different repeats use different shuffles.
+    assert not np.allclose(res.scores[0], res.scores[1])
