@@ -1,0 +1,3 @@
+# foldcheck.splitters
+
+::: foldcheck.splitters
