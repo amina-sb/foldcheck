@@ -23,3 +23,10 @@ def test_readme_table_matches_evidence_script() -> None:
     m = re.search(r"<!-- evidence:start -->\n(.*?)\n<!-- evidence:end -->", readme, re.S)
     assert m is not None, "README is missing the evidence markers"
     assert m.group(1).strip() == _load_evidence().table().strip()
+
+
+def test_readme_coverage_table_matches_evidence_script() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    m = re.search(r"<!-- coverage:start -->\n(.*?)\n<!-- coverage:end -->", readme, re.S)
+    assert m is not None, "README is missing the coverage markers"
+    assert m.group(1).strip() == _load_evidence().coverage_table().strip()

@@ -13,6 +13,13 @@ B. A random walk predicted from its time index alone. A random split lets
 C. Hyperparameter search on noise. The best-of-grid CV score is reported
    directly (flat) or re-estimated with the search nested inside each fold.
 
+A second table (D) measures interval coverage. The true expected accuracy of
+a logistic regression trained on 160 rows is estimated from 100 trainings
+scored on 100,000 held-out rows. Then, on 100 independent 200-row datasets,
+10 repeats of 5-fold CV are summarised with the naive t-interval and with
+the Nadeau-Bengio corrected interval, and the table counts how often each
+contains the truth.
+
 Each row gives the seed-0 out-of-fold estimate with a 95% percentile
 bootstrap interval (1,000 resamples), then the mean and range over seeds
 0-4. Run with ``python scripts/evidence.py``; the output is the README table
@@ -35,7 +42,7 @@ from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.pipeline import make_pipeline
 
 from foldcheck import TimeSeriesSplit
-from foldcheck.inference import bootstrap_ci, nested_cv
+from foldcheck.inference import bootstrap_ci, corrected_t_interval, nested_cv, repeated_cv
 
 SEEDS = range(5)
 N_BOOT = 1000
@@ -188,5 +195,68 @@ def table() -> str:
     return "\n".join(lines)
 
 
+# --- D: interval coverage for repeated CV ------------------------------------
+
+_BETA = np.array([1.0, 0.5, 0.25, 0.0, 0.0])
+D_REPLICATES = 100
+
+
+def _d_draw(rng: np.random.Generator, n: int) -> tuple[Arr, Arr]:
+    X = rng.normal(size=(n, 5))
+    return X, (X @ _BETA + rng.normal(size=n) > 0).astype(int)
+
+
+def d_truth() -> float:
+    rng = np.random.default_rng(99)
+    Xt, yt = _d_draw(rng, 100_000)
+    accs = []
+    for _ in range(100):
+        X, y = _d_draw(rng, 160)
+        accs.append(LogisticRegression().fit(X, y).score(Xt, yt))
+    return float(np.mean(accs))
+
+
+def _wilson(k: int, n: int, z: float = 1.959963984540054) -> tuple[float, float]:
+    p = k / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return float(centre - half), float(centre + half)
+
+
+def coverage_table() -> str:
+    truth = d_truth()
+    hits = {"naive": 0, "corrected": 0}
+    widths: dict[str, list[float]] = {"naive": [], "corrected": []}
+    for r in range(D_REPLICATES):
+        X, y = _d_draw(np.random.default_rng(r), 200)
+        res = repeated_cv(LogisticRegression(), X, y, n_splits=5, n_repeats=10, random_state=r)
+        intervals = {
+            # A vanishing n_test/n_train turns the correction off: s / sqrt(J).
+            "naive": corrected_t_interval(res.scores, n_train=10**12, n_test=1),
+            "corrected": res.interval(),
+        }
+        for name, ci in intervals.items():
+            hits[name] += ci.low <= truth <= ci.high
+            widths[name].append(ci.high - ci.low)
+    labels = {
+        "naive": "naive t-interval, s/sqrt(J)",
+        "corrected": "Nadeau-Bengio corrected",
+    }
+    lines = [
+        f"True expected accuracy at 160 training rows: {truth:.3f}",
+        "",
+        "| Interval for 10 x 5-fold CV (n = 200) | Coverage of nominal 95% "
+        "(Wilson 95% CI) | Mean width |",
+        "|---|---|---|",
+    ]
+    for name, label in labels.items():
+        lo, hi = _wilson(hits[name], D_REPLICATES)
+        cov = f"{hits[name]}/{D_REPLICATES} ({lo:.2f} to {hi:.2f})"
+        lines.append(f"| {label} | {cov} | {np.mean(widths[name]):.3f} |")
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     print(table())
+    print()
+    print(coverage_table())
