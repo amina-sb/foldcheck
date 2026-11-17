@@ -86,9 +86,9 @@ def test_nested_cv_on_noise_is_not_optimistic_but_flat_search_is() -> None:
         assert len(res.best_params) == 5
         assert res.test_mask.all()
     # The naive expectation is that tuning on noise is harmless. It is not: the
-    # best-of-12 search score beats the nested estimate on every seed (30 of 30
-    # when measured over seeds 0-29, mean gap 0.047). Individual flat scores can
-    # still land below 0.5, so the claim is paired, not "above chance".
+    # best-of-12 search score beats the nested estimate on every seed here.
+    # Individual flat scores can still land below 0.5, so the claim is paired,
+    # not "above chance".
     assert all(f > n for f, n in zip(gaps_flat, gaps_nested, strict=True))
     assert abs(float(np.mean(gaps_nested))) < 0.06
     assert np.mean(gaps_flat) - np.mean(gaps_nested) > 0.02

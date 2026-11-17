@@ -14,9 +14,9 @@ checks for the wrong ones.
 
 ## Evidence
 
-Three synthetic scenarios with a known right answer. Produced by
-`python scripts/evidence.py`; a test fails if this table and the script's
-output differ. Out-of-fold estimates, with a 95% percentile bootstrap interval
+Four synthetic scenarios with a known right answer. Produced by
+`python scripts/evidence.py`; a test fails if these tables and the script's
+output differ. For A to C: out-of-fold estimates, with a 95% percentile bootstrap interval
 (1,000 resamples) for seed 0, then the mean and range over seeds 0–4.
 
 <!-- evidence:start -->
@@ -47,10 +47,28 @@ What the table shows:
   forward (0.53). The random split hides the fact that the model loses to a
   constant.
 - **C.** Reporting the best of a 12-configuration grid on noise gives 0.53. The
-  same search nested inside each fold gives 0.49. The bias is real (the flat
-  score beat the nested one on all 30 seeds tested in `tests/test_inference.py`)
-  but small: about 4 points, well inside a single run's interval. It only
+  same search nested inside each fold gives 0.49. The bias is consistent (the flat
+  score beats the nested one on every seed in `tests/test_inference.py`) but
+  small: about 4 points, well inside a single run's interval. It only
   becomes visible across repeated runs.
+
+**D. How wide should the interval around a CV score be?** The fold scores of
+repeated cross-validation share training rows, so they are correlated, and the
+textbook `s / sqrt(J)` standard error is far too small.
+
+<!-- coverage:start -->
+True expected accuracy at 160 training rows: 0.764
+
+| Interval for 10 x 5-fold CV (n = 200) | Coverage of nominal 95% (Wilson 95% CI) | Mean width |
+|---|---|---|
+| naive t-interval, s/sqrt(J) | 45/100 (0.36 to 0.55) | 0.035 |
+| Nadeau-Bengio corrected | 98/100 (0.93 to 0.99) | 0.129 |
+<!-- coverage:end -->
+
+The naive interval contains the true accuracy less than half the time. The
+Nadeau & Bengio (2003) correction restores coverage and slightly
+over-covers, which matches its known conservatism. Its interval is 3.7 times
+wider, and that width is the honest one.
 
 Each scenario is reproduced to the digit under numpy 2.2 / scikit-learn 1.7 and
 numpy 2.5 / scikit-learn 1.9.
@@ -141,7 +159,13 @@ print(bootstrap_ci(y[m], res.oof_pred[m], accuracy, random_state=0))
 
 `bootstrap_ci` is a paired percentile bootstrap. It is checked against
 `scipy.stats.bootstrap` and by a coverage simulation (300 replicates, nominal
-95%). The percentile interval under-covers for strongly skewed statistics; a BCa
-option is on the roadmap.
+95%). `method="bca"` gives the bias-corrected and accelerated interval, checked
+against `scipy.stats.bootstrap(method="BCa")`. Neither method reaches nominal
+coverage on small skewed samples. For the mean of an Exponential(1) at n = 20,
+coverage over 400 replicates was 0.905 (percentile) and 0.925 (BCa), so BCa is
+better but not a cure.
+
+For a repeated-CV mean score, use `repeated_cv(...).interval()`, which applies
+the corrected resampled t-interval (table D above).
 
 See [ROADMAP.md](ROADMAP.md) for what is still in progress.
