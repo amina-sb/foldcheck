@@ -145,7 +145,8 @@ class GroupKFold:
             f = int(np.argmin(fold_sizes))
             group_fold[gi] = f
             fold_sizes[f] += counts[gi]
-        return group_fold[inverse.reshape(-1)]
+        rows: NDArray[np.intp] = group_fold[inverse.reshape(-1)]
+        return rows
 
     def split(
         self, X: ArrayLike, y: Any = None, groups: ArrayLike | None = None
