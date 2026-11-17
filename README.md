@@ -19,7 +19,7 @@ from foldcheck import GroupKFold, TimeSeriesSplit
 
 # Forward-chaining, 3-row embargo between train and test, rolling 500-row window.
 cv = TimeSeriesSplit(5, gap=3, max_train_size=500)
-for train, test in cv.split(X, times=df["date"]):   # raises if dates are unsorted
+for train, test in cv.split(X, times=df["date"]):  # raises if dates are unsorted
     ...
 
 # Every row of a patient/user/store lands on one side of each split.
