@@ -122,3 +122,47 @@ def test_nested_cv_mask_with_partial_coverage() -> None:
         LogisticRegression(), {"C": [1.0]}, X, y, outer=TimeSeriesSplit(4), inner=KFold(3)
     )
     assert not res.test_mask[:20].any() and res.test_mask[20:].all()
+
+
+def _mean_pred(_a: NDArray[Any], b: NDArray[Any]) -> float:
+    return float(np.mean(b))
+
+
+def test_bca_matches_scipy_on_skewed_data() -> None:
+    rng = np.random.default_rng(5)
+    x = rng.lognormal(0.0, 1.0, 60)
+    zeros = np.zeros_like(x)
+    ours = bootstrap_ci(zeros, x, _mean_pred, n_resamples=20000, method="bca", random_state=0)
+    ref = stats.bootstrap(
+        (x,), np.mean, n_resamples=20000, method="BCa", random_state=1
+    ).confidence_interval
+    # Monte Carlo error at 20,000 resamples; the interval is about 0.9 wide.
+    assert ours.low == pytest.approx(ref.low, abs=0.03)
+    assert ours.high == pytest.approx(ref.high, abs=0.05)
+    pct = bootstrap_ci(zeros, x, _mean_pred, n_resamples=20000, random_state=0)
+    # On right-skewed data BCa moves both endpoints up relative to percentile.
+    assert ours.low > pct.low and ours.high > pct.high
+
+
+def test_bca_covers_at_least_as_often_as_percentile_on_skewed_mean() -> None:
+    # Mean of Exponential(1) at n = 20: truth 1.0, skewed sampling distribution.
+    reps, n = 400, 20
+    rng = np.random.default_rng(2024)
+    hits = {"percentile": 0, "bca": 0}
+    for r in range(reps):
+        x = rng.exponential(1.0, n)
+        z = np.zeros(n)
+        for m in hits:
+            ci = bootstrap_ci(z, x, _mean_pred, n_resamples=500, method=m, random_state=r)  # type: ignore[arg-type]
+            hits[m] += ci.low <= 1.0 <= ci.high
+    pct, bca = hits["percentile"] / reps, hits["bca"] / reps
+    # Measured: percentile 0.905, BCa 0.925 (nominal 0.95). Neither reaches
+    # nominal at n = 20; BCa is the better of the two on the same replicates.
+    assert bca >= pct
+    assert (pct, bca) == (0.905, 0.925)
+
+
+def test_unknown_bootstrap_method_rejected() -> None:
+    with pytest.raises(ValueError, match="unknown method"):
+        bootstrap_ci([0, 1], [0, 1], _accuracy, method="basic")  # type: ignore[arg-type]
+

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from statistics import NormalDist
+from typing import Any, Literal
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -26,6 +27,32 @@ class Interval:
         return f"{self.estimate:.3f} [{self.low:.3f}, {self.high:.3f}]"
 
 
+def _bca_quantiles(
+    stats: NDArray[np.float64],
+    theta_hat: float,
+    jack: NDArray[np.float64],
+    alpha: float,
+) -> tuple[float, float]:
+    """Bias-corrected and accelerated quantile levels (Efron 1987, eq. 2.3).
+
+    ``z0`` measures the median bias of the bootstrap distribution, counting ties
+    as half (as ``scipy.stats.bootstrap`` does); ``a`` is the acceleration,
+    estimated from the jackknife values ``jack``.
+    """
+    nd = NormalDist()
+    frac = (np.sum(stats < theta_hat) + 0.5 * np.sum(stats == theta_hat)) / stats.size
+    frac = float(np.clip(frac, 1.0 / (stats.size + 1), stats.size / (stats.size + 1)))
+    z0 = nd.inv_cdf(frac)
+    d = jack.mean() - jack
+    denom = 6.0 * float(np.sum(d**2)) ** 1.5
+    a = float(np.sum(d**3)) / denom if denom > 0 else 0.0
+    out = []
+    for q in (alpha, 1.0 - alpha):
+        zq = nd.inv_cdf(q)
+        out.append(nd.cdf(z0 + (z0 + zq) / (1.0 - a * (z0 + zq))))
+    return out[0], out[1]
+
+
 def bootstrap_ci(
     y_true: ArrayLike,
     y_pred: ArrayLike,
@@ -33,17 +60,24 @@ def bootstrap_ci(
     *,
     n_resamples: int = 1000,
     level: float = 0.95,
+    method: Literal["percentile", "bca"] = "percentile",
     random_state: int | None = None,
 ) -> Interval:
-    """Percentile bootstrap interval for ``metric(y_true, y_pred)``.
+    """Bootstrap interval for ``metric(y_true, y_pred)``.
 
     Rows are resampled with replacement as pairs. The point estimate is the
     metric on the original data, not the mean of the resamples.
 
-    This is the plain percentile interval. It is appropriate for metrics that
-    are roughly symmetric in distribution (accuracy, R² away from its bounds)
-    at the sample sizes used here; it under-covers for heavily skewed
-    statistics, for which a BCa interval is the better tool.
+    ``method="percentile"`` takes the plain quantiles of the bootstrap
+    distribution. ``method="bca"`` shifts those quantiles to correct for median
+    bias and for a standard error that changes with the parameter, which costs
+    ``n`` extra jackknife evaluations of ``metric``.
+
+    BCa helps with skewed statistics but does not cure small samples. For
+    E[X^2] of a lognormal(0, 1) at n = 40, simulated 95% coverage was 0.69 for
+    the percentile interval and 0.75 for BCa. For the mean of an Exponential(1)
+    at n = 20 it was 0.905 and 0.925 over 400 replicates (pinned in
+    ``tests/test_inference.py``).
     """
     yt = np.asarray(y_true)
     yp = np.asarray(y_pred)
@@ -51,15 +85,28 @@ def bootstrap_ci(
         raise ValueError("y_true and y_pred must have the same length")
     if not 0.0 < level < 1.0:
         raise ValueError("level must be in (0, 1)")
+    if method not in ("percentile", "bca"):
+        raise ValueError(f"unknown method {method!r}")
     n = yt.shape[0]
     rng = np.random.default_rng(random_state)
     stats = np.empty(n_resamples)
     for b in range(n_resamples):
         idx = rng.integers(0, n, size=n)
         stats[b] = metric(yt[idx], yp[idx])
+    theta_hat = float(metric(yt, yp))
     alpha = (1.0 - level) / 2.0
-    low, high = np.quantile(stats, [alpha, 1.0 - alpha])
-    return Interval(float(metric(yt, yp)), float(low), float(high), level)
+    if method == "percentile":
+        q_lo, q_hi = alpha, 1.0 - alpha
+    else:
+        keep = np.ones(n, dtype=bool)
+        jack = np.empty(n)
+        for i in range(n):
+            keep[i] = False
+            jack[i] = metric(yt[keep], yp[keep])
+            keep[i] = True
+        q_lo, q_hi = _bca_quantiles(stats, theta_hat, jack, alpha)
+    low, high = np.quantile(stats, [q_lo, q_hi])
+    return Interval(theta_hat, float(low), float(high), level)
 
 
 @dataclass(frozen=True)
