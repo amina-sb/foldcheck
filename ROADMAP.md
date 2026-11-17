@@ -11,6 +11,12 @@
 - [x] Single-feature target-leak scan
 
 ## Phase 3 — Nested cross-validation and evidence
-- [ ] Nested CV returning outer-fold scores with an interval
-- [ ] `scripts/evidence.py` reproducing the selection-bias demonstration, pinned by a test
-- [ ] CI running lint, types, tests and evidence
+- [x] Nested CV returning outer-fold scores with an interval
+- [x] `scripts/evidence.py` reproducing the selection-bias demonstration, pinned by a test
+- [x] CI running lint, types, tests and evidence
+
+## Phase 4 — Interval quality and distribution
+- [ ] BCa bootstrap intervals, with a coverage test on a skewed statistic
+- [ ] Repeated cross-validation with a corrected resampled t-interval (Nadeau & Bengio)
+- [ ] Documentation site built from the repository
+- [ ] Release workflow using PyPI trusted publishing
