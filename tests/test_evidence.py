@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from types import ModuleType
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -18,15 +20,31 @@ def _load_evidence() -> ModuleType:
     return mod
 
 
-def test_readme_table_matches_evidence_script() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    m = re.search(r"<!-- evidence:start -->\n(.*?)\n<!-- evidence:end -->", readme, re.S)
-    assert m is not None, "README is missing the evidence markers"
-    assert m.group(1).strip() == _load_evidence().table().strip()
+PAGES = ["README.md", "docs/evidence.md"]
 
 
-def test_readme_coverage_table_matches_evidence_script() -> None:
-    readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    m = re.search(r"<!-- coverage:start -->\n(.*?)\n<!-- coverage:end -->", readme, re.S)
-    assert m is not None, "README is missing the coverage markers"
-    assert m.group(1).strip() == _load_evidence().coverage_table().strip()
+def _block(path: str, marker: str) -> str:
+    text = (ROOT / path).read_text(encoding="utf-8")
+    m = re.search(rf"<!-- {marker}:start -->\n(.*?)\n<!-- {marker}:end -->", text, re.S)
+    assert m is not None, f"{path} is missing the {marker} markers"
+    return m.group(1).strip()
+
+
+@pytest.fixture(scope="module")
+def evidence() -> ModuleType:
+    return _load_evidence()
+
+
+@pytest.mark.parametrize("path", PAGES)
+def test_evidence_table_matches_script(path: str, evidence: ModuleType) -> None:
+    assert _block(path, "evidence") == evidence.table().strip()
+
+
+@pytest.fixture(scope="module")
+def coverage(evidence: ModuleType) -> str:
+    return str(evidence.coverage_table()).strip()
+
+
+@pytest.mark.parametrize("path", PAGES)
+def test_coverage_table_matches_script(path: str, coverage: str) -> None:
+    assert _block(path, "coverage") == coverage

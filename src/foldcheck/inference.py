@@ -74,10 +74,9 @@ def bootstrap_ci(
     bias and for a standard error that changes with the parameter, which costs
     ``n`` extra jackknife evaluations of ``metric``.
 
-    BCa helps with skewed statistics but does not cure small samples. For
-    E[X^2] of a lognormal(0, 1) at n = 40, simulated 95% coverage was 0.69 for
-    the percentile interval and 0.75 for BCa. For the mean of an Exponential(1)
-    at n = 20 it was 0.905 and 0.925 over 400 replicates (pinned in
+    BCa helps with skewed statistics but does not cure small samples. For the
+    mean of an Exponential(1) at n = 20, simulated 95% coverage was 0.905 for
+    the percentile interval and 0.925 for BCa over 400 replicates (pinned in
     ``tests/test_inference.py``).
     """
     yt = np.asarray(y_true)

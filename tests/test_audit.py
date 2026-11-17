@@ -168,9 +168,11 @@ def test_target_leak_regression_uses_r2() -> None:
 def test_minmax_detected_despite_rounding_in_scaler_output() -> None:
     # MinMaxScaler's max is not exactly 1.0 on a sizeable share of columns; an
     # exact-equality check missed 220 of 1,000 columns across these seeds.
-    missed = 0
+    missed = exact_misses = 0
     for seed in range(200):
         X, _ = _data(seed, n=300, p=5)
         M = MinMaxScaler().fit_transform(X)
         missed += X.shape[1] - len(detect_global_scaling(M).findings)
+        exact_misses += int(np.sum((M.min(axis=0) != 0.0) | (M.max(axis=0) != 1.0)))
     assert missed == 0
+    assert exact_misses == 220
