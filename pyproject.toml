@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "foldcheck"
+version = "0.1.0"
+description = "Validation protocols for applied ML: grouped and time-ordered splits, nested CV, and a leakage audit."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "amina" }]
+dependencies = ["numpy>=1.24", "scikit-learn>=1.3"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "hypothesis>=6.80", "ruff>=0.5", "mypy>=1.8", "scipy>=1.10"]
+
+[project.urls]
+Repository = "https://github.com/amina-sb/foldcheck"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/foldcheck"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+files = ["src", "tests", "scripts"]
+
+[[tool.mypy.overrides]]
+module = ["sklearn.*", "scipy.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
